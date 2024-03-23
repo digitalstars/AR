@@ -1,0 +1,25 @@
+{
+  "name": "digitalstars/interface-db",
+  "description": "Библиотека - интерфейс для БД",
+  "license": "MIT",
+  "minimum-stability": "stable",
+  "authors": [
+    {
+      "name": "ZeRoX",
+      "email": "as234zx15@yandex.ru"
+    },
+    {
+      "name": "Runnin",
+      "email": "mr.kirilll12@mail.ru"
+    }
+  ],
+  "require": {
+    "php": ">=8.0",
+    "digitalstars/simple-sql": "^1.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "DigitalStars\\InterfaceDB\\": "src/"
+    }
+  }
+}
