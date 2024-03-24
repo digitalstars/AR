@@ -60,7 +60,7 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
     public function getIds() {
         $ids = [];
         foreach ($this->list as $v)
-            $ids[] = $v->get_id();
+            $ids[] = $v->getId();
         return $ids;
     }
 
@@ -97,7 +97,7 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
 
     public function getFromId(int $id) {
         foreach ($this->list as $e)
-            if ($e->get_id() === $id)
+            if ($e->getId() === $id)
                 return $e;
         return null;
     }

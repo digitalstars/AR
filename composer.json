@@ -15,7 +15,8 @@
   ],
   "require": {
     "php": ">=8.0",
-    "digitalstars/simple-sql": "^1.0"
+    "digitalstars/simple-sql": "^1.0",
+    "ext-pdo": "*"
   },
   "autoload": {
     "psr-4": {
