@@ -182,8 +182,8 @@ abstract class Module implements SmartListItem {
                 continue;
 
             $is_object = static::fieldIsObject($name);
-            $sql->addField($this->getFieldNameFromDB($name), $this->TypeToPlaceholder($is_object ? 'int' : $info['type']));
-            $values[] = $this->$name;
+            $sql->addField(static::getFieldNameFromDB($name), $this->TypeToPlaceholder($is_object ? 'int' : $info['type']));
+            $values[] = $this->getRawValueFromDB($this->$name, $is_object);
         }
         $sql->addValues($values);
 
@@ -192,7 +192,7 @@ abstract class Module implements SmartListItem {
 
         $this->is_load_data_from_db = true;
 
-        if (!static::$IS_LOAD_DATA_DB_AFTER_CREATE)
+        if (static::$IS_LOAD_DATA_DB_AFTER_CREATE)
             $this->clearDbInfo();
     }
 
@@ -314,7 +314,7 @@ abstract class Module implements SmartListItem {
     protected function updateDB(string $name, $value, $old_value) {
         $is_object = static::fieldIsObject($name);
         $this->update_fields[$name] = [
-            $this->getFieldNameFromDB($name),
+            static::getFieldNameFromDB($name),
             $this->TypeToPlaceholder($is_object ? 'int' : static::$FIELDS[$name]['type']),
             $this->getRawValueFromDB($value, $is_object)
         ];
@@ -332,10 +332,14 @@ abstract class Module implements SmartListItem {
             return $value;
     }
 
-    protected function getFieldNameFromDB($field): string {
+    protected static function getFieldNameFromDB($field, $is_object = null): string {
         if (isset(static::$FIELDS[$field]['db']))
             return static::$FIELDS[$field]['db'];
-        if (static::fieldIsObject($field))
+
+        if (is_null($is_object))
+            $is_object = static::fieldIsObject($field);
+
+        if ($is_object)
             return $field . '_id';
         return $field;
     }
@@ -374,12 +378,13 @@ abstract class Module implements SmartListItem {
 
         $alias = static::getFrom()->getAlias();
         foreach (static::$FIELDS as $name => $info) {
-            $db_name = $info['db'] ?? $name;
+            $is_object = !in_array($info['type'], ['bool', 'int', 'string', 'double'], true);
+            $db_name = static::getFieldNameFromDB($name, $is_object);
             static::$cache_select_fields[$name] = [
                 'name' => $name,
                 'db_name' => "$alias.$db_name",
                 'query_name' => "{$alias}_$db_name",
-                'is_object' => !in_array($info['type'], ['bool', 'int', 'string', 'double'], true)
+                'is_object' => $is_object
             ];
         }
 
@@ -387,10 +392,10 @@ abstract class Module implements SmartListItem {
     }
 
     protected static function getFrom(): From {
-        if (!isset(self::$FROM))
-            self::$FROM = From::create(static::$SQL_FROM, static::$SQL_ALIAS);
+        if (!isset(static::$FROM))
+            static::$FROM = From::create(static::$SQL_FROM, static::$SQL_ALIAS);
 
-        return self::$FROM;
+        return static::$FROM;
     }
 
     protected static function fieldIsObject($name) {
@@ -401,8 +406,8 @@ abstract class Module implements SmartListItem {
     private ?int $id;
     private bool $is_load_data_from_db = false;
     private array $modify_fields = [];
-    private static From $FROM;
-    private static array $cache_select_fields = [];
+    protected static From $FROM;
+    protected static array $cache_select_fields = [];
 
     private array $update_fields = [];
 
@@ -485,7 +490,7 @@ abstract class Module implements SmartListItem {
         foreach ($this->getModifyFields() as $field) {
             $field_info = static::$FIELDS[$field];
             $is_object = static::fieldIsObject($field);
-            $db_field = $this->getFieldNameFromDB($field);
+            $db_field = static::getFieldNameFromDB($field);
             $placeholder = $this->TypeToPlaceholder($is_object ? 'int' : $field_info['type']);
             $raw_value = $this->getRawValueFromDB($this->$field, $is_object);
             $sql->getWhere()->w_and("?f = $placeholder", [$db_field, $raw_value]);
