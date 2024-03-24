@@ -14,7 +14,7 @@ use DigitalStars\SimpleSQL\Update;
 /**
  * @property-read  int id
  */
-abstract class Module implements SmartListItem {
+abstract class Table implements SmartListItem {
 
     /*    protected static array $FIELDS = [                        // Описание типов магических свойств
             'id' => [                                               // Ключ - имя магического свойства
@@ -60,10 +60,16 @@ abstract class Module implements SmartListItem {
         ]
     ];
 
+    protected static int|null $MAX_DEPTH = null;
+
+    private static function getMaxDepth(): int {
+        return is_null(static::$MAX_DEPTH) ? Main::getMaxDepth() : static::$MAX_DEPTH;
+    }
+
     protected static bool $IS_LOAD_DATA_DB_AFTER_CREATE = false; // Вытащить из БД данные после создания записи
 
     // Магические свойства и обработка значений по умолчанию
-    public function __construct(?int $id = null) {
+    protected function __construct(?int $id = null) {
         $this->id = $id;
     }
 
@@ -276,15 +282,44 @@ abstract class Module implements SmartListItem {
         return $this->isModeCreate() || (isset(static::$FIELDS[$name]['access_modify']) && static::$FIELDS[$name]['access_modify']);
     }
 
+    private function combineSql(Select $sql, array &$interfaces, int $depth): void {
+        if (static::getMaxDepth() <= $depth)
+            return;
+
+        foreach ($this->getSelectFields() as $name => $info) {
+            if (!$info['is_object'])
+                continue;
+
+            $interface = call_user_func([static::$FIELDS[$name]['type'], 'create']);
+            if ($interface instanceof self) {
+                $this->info[$name] = $interface;
+                $interfaces[] = $interface;
+
+                $sql->addJoin($interface->getJoin(empty(static::$FIELDS[$name]['is_required']) ? 'LEFT' : 'INNER'));
+                $sql->addSelectList($interface->getSql()->getSelect());
+
+                $interface->combineSql($sql, $interfaces, $depth + 1);
+            }
+        }
+    }
+
     protected function initDbInfo() {
         if ($this->is_load_data_from_db || is_null($this->id))
             return;
 
         $sql = $this->getSql();
         $alias = $this->getFrom()->getAlias();
-
         $sql->getWhere()->w_and($alias . '.id = ?i', [$this->id]);
-        $this->parseDbData(Main::query($sql->getSql())?->fetch());
+
+        $interfaces = [];
+        $this->combineSql($sql, $interfaces, 0);
+
+        $tmp_data = Main::query($sql->getSql())?->fetch();
+
+        foreach ($interfaces as $interface)
+            $interface->parseDbData($tmp_data);
+
+        $this->parseDbData($tmp_data);
     }
 
     protected function parseDbData(array|null|bool $tmp_info = null) {
@@ -293,12 +328,14 @@ abstract class Module implements SmartListItem {
 
         foreach ($this->getSelectFields() as $name => $info) {
             $is_object = $this->fieldIsObject($name);
-            if ($is_object)
-                $this->info[$name] = call_user_func(
-                    [static::$FIELDS[$name]['type'], 'create'], $tmp_info[$info['query_name']]
-                );
-            else
+            if ($is_object) {
+                if (empty($this->info[$name]))
+                    $this->info[$name] = call_user_func(
+                        [static::$FIELDS[$name]['type'], 'create'], $tmp_info[$info['query_name']]
+                    );
+            } else {
                 $this->info[$name] = $tmp_info[$info['query_name']];
+            }
         }
 
         if (is_null($this->id)) {
@@ -324,7 +361,7 @@ abstract class Module implements SmartListItem {
         if (is_null($value))
             return null;
         if ($is_object) {
-            if ($value instanceof Module)
+            if ($value instanceof Table)
                 return $value->getId();
             else
                 throw new Exception('Update type not found');
@@ -396,10 +433,16 @@ abstract class Module implements SmartListItem {
     }
 
     protected function getFrom(): From {
-        if (!isset($this->FROM))
-            $this->FROM = From::create(static::$SQL_FROM, static::$SQL_ALIAS . $this->generateRandAliasPrefix());
+        if (!isset($this->FROM)) {
+            $this->FROM = static::getFromRaw();
+            $this->FROM->setAlias(static::$SQL_ALIAS . $this->generateRandAliasPrefix());
+        }
 
         return $this->FROM;
+    }
+
+    public static function getFromRaw(): From {
+        return From::create(static::$SQL_FROM, static::$SQL_ALIAS);
     }
 
     protected function fieldIsObject($name) {
