@@ -251,4 +251,11 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
             if (!$item->$method(...$args))
                 unset($this->list[$key]);
     }
+
+    public function unique(): static {
+        $result = new static($this->class_name, true);
+        foreach ($this->list as $item)
+            $result[] = $item;
+        return $result;
+    }
 }
