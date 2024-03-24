@@ -8,6 +8,7 @@ class Main {
     private static \PDO $pdo;
     private static \Closure $exec;
     private static \Closure $query;
+    private static int|null $max_depth = null;
 
     public static function setPDO(\PDO $pdo) {
         self::$pdo = $pdo;
@@ -38,5 +39,13 @@ class Main {
             return call_user_func_array(self::$query, func_get_args());
 
         return self::getPDO()->query(...func_get_args());
+    }
+
+    public static function setMaxDepth(?int $max_depth = null): void {
+        self::$max_depth = $max_depth;
+    }
+
+    public static function getMaxDepth(): int|null {
+        return self::$max_depth;
     }
 }

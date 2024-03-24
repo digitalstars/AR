@@ -158,7 +158,7 @@ abstract class Module implements SmartListItem {
             return;
 
         $sql = Update::create()
-            ->setFrom(static::getFrom())
+            ->setFrom($this->getFrom())
             ->setWhere(Where::create('id = ?i', [$this->id]))
             ->setLimit(1);
 
@@ -174,15 +174,15 @@ abstract class Module implements SmartListItem {
             throw new Exception('Create is not access');
 
         $sql = Insert::create()
-            ->setFrom(static::getFrom());
+            ->setFrom($this->getFrom());
 
         $values = [];
         foreach (static::$FIELDS as $name => $info) {
             if ($name === 'id')
                 continue;
 
-            $is_object = static::fieldIsObject($name);
-            $sql->addField(static::getFieldNameFromDB($name), $this->TypeToPlaceholder($is_object ? 'int' : $info['type']));
+            $is_object = $this->fieldIsObject($name);
+            $sql->addField($this->getFieldNameFromDB($name), $this->TypeToPlaceholder($is_object ? 'int' : $info['type']));
             $values[] = $this->getRawValueFromDB($this->$name, $is_object);
         }
         $sql->addValues($values);
@@ -200,18 +200,18 @@ abstract class Module implements SmartListItem {
         return new static($id);
     }
 
-    public static function getSql(): Select {
+    public function getSql(): Select {
         return Select::create()
             ->setSelect(
                 array_combine(
-                    array_column(static::getSelectFields(), 'query_name'),
-                    array_column(static::getSelectFields(), 'db_name')))
-            ->setFrom(static::getFrom())
+                    array_column($this->getSelectFields(), 'query_name'),
+                    array_column($this->getSelectFields(), 'db_name')))
+            ->setFrom($this->getFrom())
             ->setLimit(1);
     }
 
-    public static function getJoin(string $type = 'INNER'): Join {
-        return Join::create($type, static::getFrom());
+    public function getJoin(string $type = 'INNER'): Join {
+        return Join::create($type, $this->getFrom());
     }
 
     /** Test
@@ -280,8 +280,8 @@ abstract class Module implements SmartListItem {
         if ($this->is_load_data_from_db || is_null($this->id))
             return;
 
-        $sql = static::getSql();
-        $alias = static::getFrom()->getAlias();
+        $sql = $this->getSql();
+        $alias = $this->getFrom()->getAlias();
 
         $sql->getWhere()->w_and($alias . '.id = ?i', [$this->id]);
         $this->parseDbData(Main::query($sql->getSql())?->fetch());
@@ -291,8 +291,8 @@ abstract class Module implements SmartListItem {
         if (!$tmp_info)
             throw new Exception('DBInfo not found');
 
-        foreach (static::getSelectFields() as $name => $info) {
-            $is_object = static::fieldIsObject($name);
+        foreach ($this->getSelectFields() as $name => $info) {
+            $is_object = $this->fieldIsObject($name);
             if ($is_object)
                 $this->info[$name] = call_user_func(
                     [static::$FIELDS[$name]['type'], 'create'], $tmp_info[$info['query_name']]
@@ -312,9 +312,9 @@ abstract class Module implements SmartListItem {
     }
 
     protected function updateDB(string $name, $value, $old_value) {
-        $is_object = static::fieldIsObject($name);
+        $is_object = $this->fieldIsObject($name);
         $this->update_fields[$name] = [
-            static::getFieldNameFromDB($name),
+            $this->getFieldNameFromDB($name),
             $this->TypeToPlaceholder($is_object ? 'int' : static::$FIELDS[$name]['type']),
             $this->getRawValueFromDB($value, $is_object)
         ];
@@ -332,12 +332,12 @@ abstract class Module implements SmartListItem {
             return $value;
     }
 
-    protected static function getFieldNameFromDB($field, $is_object = null): string {
+    protected function getFieldNameFromDB($field, $is_object = null): string {
         if (isset(static::$FIELDS[$field]['db']))
             return static::$FIELDS[$field]['db'];
 
         if (is_null($is_object))
-            $is_object = static::fieldIsObject($field);
+            $is_object = $this->fieldIsObject($field);
 
         if ($is_object)
             return $field . '_id';
@@ -372,15 +372,15 @@ abstract class Module implements SmartListItem {
     protected static string $SQL_FROM = '';
     protected static string $SQL_ALIAS = '';
 
-    protected static function getSelectFields(): array {
-        if (!empty(static::$cache_select_fields))
-            return static::$cache_select_fields;
+    protected function getSelectFields(): array {
+        if (!empty($this->cache_select_fields))
+            return $this->cache_select_fields;
 
-        $alias = static::getFrom()->getAlias();
+        $alias = $this->getFrom()->getAlias();
         foreach (static::$FIELDS as $name => $info) {
             $is_object = !in_array($info['type'], ['bool', 'int', 'string', 'double'], true);
-            $db_name = static::getFieldNameFromDB($name, $is_object);
-            static::$cache_select_fields[$name] = [
+            $db_name = $this->getFieldNameFromDB($name, $is_object);
+            $this->cache_select_fields[$name] = [
                 'name' => $name,
                 'db_name' => "$alias.$db_name",
                 'query_name' => "{$alias}_$db_name",
@@ -388,26 +388,30 @@ abstract class Module implements SmartListItem {
             ];
         }
 
-        return static::$cache_select_fields;
+        return $this->cache_select_fields;
     }
 
-    protected static function getFrom(): From {
-        if (!isset(static::$FROM))
-            static::$FROM = From::create(static::$SQL_FROM, static::$SQL_ALIAS);
-
-        return static::$FROM;
+    private function generateRandAliasPrefix(): string {
+        return 't' . rand(1000, 9999);
     }
 
-    protected static function fieldIsObject($name) {
-        return static::getSelectFields()[$name]['is_object'];
+    protected function getFrom(): From {
+        if (!isset($this->FROM))
+            $this->FROM = From::create(static::$SQL_FROM, static::$SQL_ALIAS . $this->generateRandAliasPrefix());
+
+        return $this->FROM;
+    }
+
+    protected function fieldIsObject($name) {
+        return $this->getSelectFields()[$name]['is_object'];
     }
 
     private array $info = [];
     private ?int $id;
     private bool $is_load_data_from_db = false;
     private array $modify_fields = [];
-    protected static From $FROM;
-    protected static array $cache_select_fields = [];
+    protected From $FROM;
+    private array $cache_select_fields = [];
 
     private array $update_fields = [];
 
@@ -485,12 +489,12 @@ abstract class Module implements SmartListItem {
 
     private function setInSqlModifyFields(Select $sql = null): Select {
         if (empty($sql))
-            $sql = static::getSql();
+            $sql = $this->getSql();
 
         foreach ($this->getModifyFields() as $field) {
             $field_info = static::$FIELDS[$field];
-            $is_object = static::fieldIsObject($field);
-            $db_field = static::getFieldNameFromDB($field);
+            $is_object = $this->fieldIsObject($field);
+            $db_field = $this->getFieldNameFromDB($field);
             $placeholder = $this->TypeToPlaceholder($is_object ? 'int' : $field_info['type']);
             $raw_value = $this->getRawValueFromDB($this->$field, $is_object);
             $sql->getWhere()->w_and("?f = $placeholder", [$db_field, $raw_value]);
