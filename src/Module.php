@@ -60,6 +60,8 @@ abstract class Module implements SmartListItem {
         ]
     ];
 
+    protected static bool $IS_LOAD_DATA_DB_AFTER_CREATE = false; // Вытащить из БД данные после создания записи
+
     // Магические свойства и обработка значений по умолчанию
     public function __construct(?int $id = null) {
         $this->id = $id;
@@ -189,6 +191,9 @@ abstract class Module implements SmartListItem {
         $this->id = Main::getPDO()->lastInsertId();
 
         $this->is_load_data_from_db = true;
+
+        if (!static::$IS_LOAD_DATA_DB_AFTER_CREATE)
+            $this->clearDbInfo();
     }
 
     public static function create(?int $id = null) {
