@@ -229,9 +229,9 @@ abstract class Table implements SmartListItem {
         return static::createFromSql($sql);
     }
 
-    public static function createListFromSelf(self $filter): SmartList {
-        $sql = $filter->setInSqlModifyFields();
-        return static::getListFromSQL($sql);
+    public function createListFromSelf(): SmartList {
+        $sql = $this->setInSqlModifyFields();
+        return $this->getListFromSQL($sql);
     }
 
     protected function getUserField($name) {
@@ -295,8 +295,15 @@ abstract class Table implements SmartListItem {
                 $this->info[$name] = $interface;
                 $interfaces[] = $interface;
 
-                $sql->addJoin($interface->getJoin(empty(static::$FIELDS[$name]['is_required']) ? 'LEFT' : 'INNER'));
-                $sql->addSelectList($interface->getSql()->getSelect());
+                $interface_sql = $interface->getSql();
+
+                $join = $interface->getJoin(empty(static::$FIELDS[$name]['is_required']) ? 'LEFT' : 'INNER');
+                $join->setWhere($interface_sql->getWhere());
+                $join->getWhere()->w_and($this->getFrom()->getAlias() . '.' . $this->getFieldNameFromDB($name, true) . ' = '
+                    . $interface_sql->getFrom()->getAlias() . '.id');
+
+                $sql->addJoin($join);
+                $sql->addSelectList($interface_sql->getSelect());
 
                 $interface->combineSql($sql, $interfaces, $depth + 1);
             }
@@ -381,13 +388,61 @@ abstract class Table implements SmartListItem {
         return $field;
     }
 
-    protected static function getListFromSQL(Select $sql): SmartList {
+    private function combineSqlMulti(Select $sql, array &$interfaces_info, int $depth): void {
+        if (static::getMaxDepth() <= $depth)
+            return;
+
+        foreach ($this->getSelectFields() as $name => $info) {
+            if (!$info['is_object'])
+                continue;
+
+            $interface = call_user_func([static::$FIELDS[$name]['type'], 'create']);
+            if ($interface instanceof self) {
+                $this->info[$name] = $interface;
+                $interfaces_info[$name] = [
+                    'value' => $interface,
+                    'child' => []
+                ];
+
+                $interface_sql = $interface->getSql();
+
+                $join = $interface->getJoin(empty(static::$FIELDS[$name]['is_required']) ? 'LEFT' : 'INNER');
+                $join->setWhere($interface_sql->getWhere());
+                $join->getWhere()->w_and($this->getFrom()->getAlias() . '.' . $this->getFieldNameFromDB($name, true) . ' = '
+                    . $interface_sql->getFrom()->getAlias() . '.id');
+
+                $sql->addJoin($join);
+                $sql->addSelectList($interface_sql->getSelect());
+
+                $interface->combineSqlMulti($sql, $interfaces_info[$name]['child'], $depth + 1);
+            }
+        }
+    }
+
+    private function loadDataFromInterfaceInfo(self $interface, array $interfaces_info, $tmp_info) {
+        foreach ($interfaces_info as $name => $info) {
+            $interface->info[$name] = call_user_func([static::$FIELDS[$name]['type'], 'create']);
+            $interface->info[$name]->FROM = $info['value']->FROM;
+            $interface->info[$name]->loadDataFromInterfaceInfo($interface->info[$name], $info['child'], $tmp_info);
+        }
+        $interface->parseDbData($tmp_info);
+    }
+
+    protected function getListFromSQL(Select $sql): SmartList {
         $result = new SmartList(static::class);
+
+        $sql->setLimit();
+
+        $interfaces_info = [];
+        $this->combineSqlMulti($sql, $interfaces_info, 0);
 
         $tmp_info_q = Main::query($sql->setLimit()->getSql());
         while ($tmp_info = $tmp_info_q->fetch()) {
             $item = static::create();
-            $item->parseDbData($tmp_info);
+            $item->FROM = $this->FROM;
+
+            $this->loadDataFromInterfaceInfo($item, $interfaces_info, $tmp_info);
+
             $result[] = $item;
         }
 
@@ -540,7 +595,7 @@ abstract class Table implements SmartListItem {
             $db_field = $this->getFieldNameFromDB($field);
             $placeholder = $this->TypeToPlaceholder($is_object ? 'int' : $field_info['type']);
             $raw_value = $this->getRawValueFromDB($this->$field, $is_object);
-            $sql->getWhere()->w_and("?f = $placeholder", [$db_field, $raw_value]);
+            $sql->getWhere()->w_and($this->getFrom()->getAlias() . ".?f = $placeholder", [$db_field, $raw_value]);
         }
 
         return $sql;
