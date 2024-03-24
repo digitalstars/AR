@@ -71,6 +71,7 @@ abstract class Table implements SmartListItem {
     // Магические свойства и обработка значений по умолчанию
     protected function __construct(?int $id = null) {
         $this->id = $id;
+        static::saveSelfCache($this);
     }
 
     public function __get($name) {
@@ -200,9 +201,13 @@ abstract class Table implements SmartListItem {
 
         if (static::$IS_LOAD_DATA_DB_AFTER_CREATE)
             $this->clearDbInfo();
+
+        self::saveSelfCache($this);
     }
 
     public static function create(?int $id = null) {
+        if ($id)
+            return self::getSelfCacheForId($id) ?: new static($id);
         return new static($id);
     }
 
@@ -220,13 +225,9 @@ abstract class Table implements SmartListItem {
         return Join::create($type, $this->getFrom());
     }
 
-    /** Test
-     * @param self $filter
-     * @return $this
-     */
-    public static function createFromSelf(self $filter): static {
-        $sql = $filter->setInSqlModifyFields();
-        return static::createFromSql($sql);
+    public function createFromSelf(): ?static {
+        $sql = $this->setInSqlModifyFields();
+        return $this->createFromSql($sql);
     }
 
     public function createListFromSelf(): SmartList {
@@ -282,34 +283,6 @@ abstract class Table implements SmartListItem {
         return $this->isModeCreate() || (isset(static::$FIELDS[$name]['access_modify']) && static::$FIELDS[$name]['access_modify']);
     }
 
-    private function combineSql(Select $sql, array &$interfaces, int $depth): void {
-        if (static::getMaxDepth() <= $depth)
-            return;
-
-        foreach ($this->getSelectFields() as $name => $info) {
-            if (!$info['is_object'])
-                continue;
-
-            $interface = call_user_func([static::$FIELDS[$name]['type'], 'create']);
-            if ($interface instanceof self) {
-                $this->info[$name] = $interface;
-                $interfaces[] = $interface;
-
-                $interface_sql = $interface->getSql();
-
-                $join = $interface->getJoin(empty(static::$FIELDS[$name]['is_required']) ? 'LEFT' : 'INNER');
-                $join->setWhere($interface_sql->getWhere());
-                $join->getWhere()->w_and($this->getFrom()->getAlias() . '.' . $this->getFieldNameFromDB($name, true) . ' = '
-                    . $interface_sql->getFrom()->getAlias() . '.id');
-
-                $sql->addJoin($join);
-                $sql->addSelectList($interface_sql->getSelect());
-
-                $interface->combineSql($sql, $interfaces, $depth + 1);
-            }
-        }
-    }
-
     protected function initDbInfo() {
         if ($this->is_load_data_from_db || is_null($this->id))
             return;
@@ -323,13 +296,15 @@ abstract class Table implements SmartListItem {
 
         $tmp_data = Main::query($sql->getSql())?->fetch();
 
-        foreach ($interfaces as $interface)
-            $interface->parseDbData($tmp_data);
+        $this->loadDataFromInterfaceInfo($this, $interfaces, $tmp_data);
 
         $this->parseDbData($tmp_data);
     }
 
     protected function parseDbData(array|null|bool $tmp_info = null) {
+        if ($this->is_load_data_from_db)
+            return;
+
         if (!$tmp_info)
             throw new Exception('DBInfo not found');
 
@@ -353,6 +328,8 @@ abstract class Table implements SmartListItem {
         }
 
         $this->is_load_data_from_db = true;
+
+        static::saveSelfCache($this);
     }
 
     protected function updateDB(string $name, $value, $old_value) {
@@ -388,7 +365,7 @@ abstract class Table implements SmartListItem {
         return $field;
     }
 
-    private function combineSqlMulti(Select $sql, array &$interfaces_info, int $depth): void {
+    private function combineSql(Select $sql, array &$interfaces_info, int $depth): void {
         if (static::getMaxDepth() <= $depth)
             return;
 
@@ -414,14 +391,19 @@ abstract class Table implements SmartListItem {
                 $sql->addJoin($join);
                 $sql->addSelectList($interface_sql->getSelect());
 
-                $interface->combineSqlMulti($sql, $interfaces_info[$name]['child'], $depth + 1);
+                $interface->combineSql($sql, $interfaces_info[$name]['child'], $depth + 1);
             }
         }
     }
 
     private function loadDataFromInterfaceInfo(self $interface, array $interfaces_info, $tmp_info) {
         foreach ($interfaces_info as $name => $info) {
-            $interface->info[$name] = call_user_func([static::$FIELDS[$name]['type'], 'create']);
+            $cache_item = self::getSelfCacheForClassnameAndId(static::$FIELDS[$name]['type'], $tmp_info[$info['value']->getIdQueryName()]);
+            if ($cache_item) {
+                $interface->info[$name] = $cache_item;
+            } else {
+                $interface->info[$name] = call_user_func([static::$FIELDS[$name]['type'], 'create']);
+            }
             $interface->info[$name]->FROM = $info['value']->FROM;
             $interface->info[$name]->loadDataFromInterfaceInfo($interface->info[$name], $info['child'], $tmp_info);
         }
@@ -434,12 +416,17 @@ abstract class Table implements SmartListItem {
         $sql->setLimit();
 
         $interfaces_info = [];
-        $this->combineSqlMulti($sql, $interfaces_info, 0);
+        $this->combineSql($sql, $interfaces_info, 0);
 
         $tmp_info_q = Main::query($sql->setLimit()->getSql());
         while ($tmp_info = $tmp_info_q->fetch()) {
-            $item = static::create();
-            $item->FROM = $this->FROM;
+            $cache_item = self::getSelfCacheForClassnameAndId(static::class, $tmp_info[$this->getIdQueryName()]);
+            if ($cache_item) {
+                $item = $cache_item;
+            } else {
+                $item = static::create();
+                $item->FROM = $this->FROM;
+            }
 
             $this->loadDataFromInterfaceInfo($item, $interfaces_info, $tmp_info);
 
@@ -449,14 +436,26 @@ abstract class Table implements SmartListItem {
         return $result;
     }
 
-    protected static function createFromSql(Select $sql) {
-        $tmp_info = Main::query($sql->setLimit(1)->getSql())->fetch();
+    protected function createFromSql(Select $sql): ?static {
+        $sql->setLimit(1);
 
-        if (empty($tmp_info))
+        $interfaces_info = [];
+        $this->combineSql($sql, $interfaces_info, 0);
+
+        $tmp_info = Main::query($sql->setLimit()->getSql())?->fetch();
+
+        if (!$tmp_info)
             return null;
 
-        $item = static::create();
-        $item->parseDbData($tmp_info);
+        $cache_item = self::getSelfCacheForClassnameAndId(static::class, $tmp_info[$this->getIdQueryName()]);
+        if ($cache_item) {
+            $item = $cache_item;
+        } else {
+            $item = static::create();
+            $item->FROM = $this->FROM;
+        }
+
+        $this->loadDataFromInterfaceInfo($item, $interfaces_info, $tmp_info);
 
         return $item;
     }
@@ -481,6 +480,12 @@ abstract class Table implements SmartListItem {
         }
 
         return $this->cache_select_fields;
+    }
+
+    private function getIdQueryName(): string {
+        $alias = $this->getFrom()->getAlias();
+        $db_name = $this->getFieldNameFromDB('id', false);
+        return "{$alias}_$db_name";
     }
 
     private function generateRandAliasPrefix(): string {
@@ -599,5 +604,27 @@ abstract class Table implements SmartListItem {
         }
 
         return $sql;
+    }
+
+    private static array $SUPER_CACHE_TABLES = [];
+
+    private static function saveSelfCache(self $item) {
+        if ($item->isSetId()) {
+            if (!isset(self::$SUPER_CACHE_TABLES[static::class][$item->id])) {
+                self::$SUPER_CACHE_TABLES[static::class][$item->id] = $item;
+            }
+        }
+    }
+
+    private static function getSelfCacheForId(int $id): self|null {
+        if (isset(self::$SUPER_CACHE_TABLES[static::class][$id]))
+            return self::$SUPER_CACHE_TABLES[static::class][$id];
+        return null;
+    }
+
+    private static function getSelfCacheForClassnameAndId(string $class_name, int $id): self|null {
+        if (isset(self::$SUPER_CACHE_TABLES[$class_name][$id]))
+            return self::$SUPER_CACHE_TABLES[$class_name][$id];
+        return null;
     }
 }
