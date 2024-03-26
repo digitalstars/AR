@@ -190,7 +190,10 @@ abstract class Table implements SmartListItem {
 
             $is_object = $this->fieldIsObject($name);
             $sql->addField($this->getFieldNameFromDB($name), $this->getFieldPlaceholder($name));
-            $values[] = $this->getRawValueFromDB($this->$name, $is_object);
+            $value = $this->getRawValueFromDB($this->$name, $is_object);
+            if (is_null($value) && $info['is_required'])
+                throw new Exception("$name Not access NULL");
+            $values[] = $value;
         }
         $sql->addValues($values);
 
