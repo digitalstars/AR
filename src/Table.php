@@ -224,7 +224,7 @@ abstract class Table implements SmartListItem {
     }
 
     public function createFromSelf(): ?static {
-        $sql = $this->getSqlModifyFields();
+        $sql = $this->getSqlFilter();
         $sql->setLimit(1);
 
         $interfaces_info = [];
@@ -249,7 +249,7 @@ abstract class Table implements SmartListItem {
     }
 
     public function createListFromSelf(): SmartList {
-        $sql = $this->getSqlModifyFields();
+        $sql = $this->getSqlFilter();
         $result = new SmartList(static::class);
 
         $sql->setLimit();
@@ -324,6 +324,11 @@ abstract class Table implements SmartListItem {
         }
 
         $old_value = $this->info[$name] ?? null;
+
+        if ($this->isSetCustomFilter() && $value instanceof self && $old_value instanceof self) {
+            $value->FROM = $old_value->FROM;
+        }
+
         $this->info[$name] = $value;
 
         if ($this->isModeModify())
@@ -484,12 +489,35 @@ abstract class Table implements SmartListItem {
         return $this->getSelectFields()[$name]['is_object'];
     }
 
+    protected function setCustomFilter(Where $where): self {
+        $this->custom_filter_condition = $where;
+        return $this;
+    }
+
+    protected function addCustomFilter(): Where {
+        if (empty($this->custom_filter_condition))
+            $this->custom_filter_condition = Where::create();
+        else
+            $this->custom_filter_condition = Where::create($this->getCustomFilter());
+
+        return $this->custom_filter_condition;
+    }
+
+    protected function getCustomFilter(): Where {
+        return $this->custom_filter_condition;
+    }
+
+    protected function isSetCustomFilter(): bool {
+        return isset($this->custom_filter_condition);
+    }
+
     private array $info = [];
     private ?int $id;
     private bool $is_load_data_from_db = false;
     private array $modify_fields = [];
     private array $cache_select_fields = [];
     private array $update_fields = [];
+    private Where $custom_filter_condition;
 
     private static function getMaxDepth(): int {
         return is_null(static::$MAX_DEPTH) ? Main::getMaxDepth() : static::$MAX_DEPTH;
@@ -545,7 +573,11 @@ abstract class Table implements SmartListItem {
                 continue;
             }
 
-            $interface = call_user_func([static::$FIELDS[$name]['type'], 'create']);
+            if (!empty($this->info[$name]))
+                $interface = $this->info[$name];
+            else
+                $interface = call_user_func([static::$FIELDS[$name]['type'], 'create']);
+
             if ($interface instanceof self) {
                 $this->info[$name] = $interface;
                 $interfaces_info[$name] = [
@@ -644,18 +676,21 @@ abstract class Table implements SmartListItem {
         throw new Exception("$name Not found in " . get_class($this));
     }
 
-    private function getSqlModifyFields(Select $sql = null): Select {
+    private function getSqlFilter(Select $sql = null): Select {
         if (is_null($sql))
             $sql = $this->getSql();
 
-        foreach ($this->getModifyFields() as $field) {
+        foreach (static::$FIELDS as $field => $info) {
+            if (empty($this->modify_fields[$field]) && !(!empty($this->info[$field]) && $this->info[$field] instanceof self && !$this->info[$field]->isSetId()))
+                continue;
+
+
             $is_object = $this->fieldIsObject($field);
 
             if ($is_object && $this->$field instanceof self && !$this->$field->isSetId()) {
                 /** @var Select $interface_sql */
-                $interface_sql = $this->$field->getSqlModifyFields();
+                $interface_sql = $this->$field->getSqlFilter(null);
 
-                $sql->addJoin($interface_sql->getJoinList());
                 $sql->addSelectList($interface_sql->getSelect());
 
                 /** @var Join $join */
@@ -664,6 +699,7 @@ abstract class Table implements SmartListItem {
                 $join->getWhere()->w_and($this->getFieldQueryName($field) . ' = ' . $this->$field->getFieldQueryName('id'));
 
                 $sql->addJoin($join);
+                $sql->addJoin($interface_sql->getJoinList());
                 continue;
             }
 
@@ -671,6 +707,9 @@ abstract class Table implements SmartListItem {
             $raw_value = $this->getRawValueFromDB($this->$field);
             $sql->getWhere()->w_and($this->getFieldQueryName($field) . " = $placeholder", [$raw_value]);
         }
+
+        if ($this->isSetCustomFilter())
+            $sql->getWhere()->w_and($this->getCustomFilter());
 
         return $sql;
     }
