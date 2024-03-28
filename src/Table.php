@@ -67,7 +67,8 @@ abstract class Table implements SmartListItem {
     // Магические свойства и обработка значений по умолчанию
     protected function __construct(?int $id = null) {
         $this->id = $id;
-        static::saveSelfCache($this);
+        if ($id)
+            static::saveSelfCache($this);
     }
 
     public function __get($name) {
@@ -223,7 +224,7 @@ abstract class Table implements SmartListItem {
         return Join::create($type, $this->getFrom());
     }
 
-    public function createFromSelf(): ?static {
+    public function find(): ?static {
         $sql = $this->getSqlFilter();
         $sql->setLimit(1);
 
@@ -235,20 +236,15 @@ abstract class Table implements SmartListItem {
         if (!$tmp_info)
             return null;
 
-        $cache_item = self::getSelfCacheForClassnameAndId(static::class, $tmp_info[$this->getFieldAliasName('id')]);
-        if ($cache_item) {
-            $item = $cache_item;
-        } else {
-            $item = static::create();
-            $item->FROM = $this->FROM;
-        }
+        $item = static::create($tmp_info[$this->getFieldAliasName('id')]);
+        $item->FROM = $this->FROM;
 
         $this->loadDataFromInterfaceInfo($item, $interfaces_info, $tmp_info);
 
         return $item;
     }
 
-    public function createListFromSelf(): SmartList {
+    public function findAll(): SmartList {
         $sql = $this->getSqlFilter();
         $result = new SmartList(static::class);
 
@@ -259,14 +255,8 @@ abstract class Table implements SmartListItem {
 
         $tmp_info_q = Main::query($sql->setLimit()->getSql());
         while ($tmp_info = $tmp_info_q->fetch()) {
-            $cache_item = self::getSelfCacheForClassnameAndId(static::class, $tmp_info[$this->getFieldAliasName('id')]);
-            if ($cache_item) {
-                $item = $cache_item;
-            } else {
-                $item = static::create();
-                $item->FROM = $this->FROM;
-            }
-
+            $item = static::create($tmp_info[$this->getFieldAliasName('id')]);
+            $item->FROM = $this->FROM;
             $this->loadDataFromInterfaceInfo($item, $interfaces_info, $tmp_info);
 
             $result[] = $item;
@@ -295,6 +285,10 @@ abstract class Table implements SmartListItem {
      */
     public function isAccessModifyField(string $name): bool {
         return $this->isModeCreate() || (isset(static::$FIELDS[$name]['access_modify']) && static::$FIELDS[$name]['access_modify']);
+    }
+
+    public function used(): static {
+        return $this;
     }
 
     protected function getUserField($name) {
@@ -434,13 +428,8 @@ abstract class Table implements SmartListItem {
         $tmp_info_q = Main::query($sql->setLimit()->getSql());
 
         while ($tmp_info = $tmp_info_q->fetch()) {
-            $cache_item = self::getSelfCacheForClassnameAndId(static::class, $tmp_info[$this->getFieldAliasName('id')]);
-            if ($cache_item) {
-                $item = $cache_item;
-            } else {
-                $item = static::create();
-                $item->FROM = $this->FROM;
-            }
+            $item = static::create($tmp_info[$this->getFieldAliasName('id')]);
+            $item->FROM = $this->FROM;
 
             $result[] = $item;
         }
@@ -456,13 +445,8 @@ abstract class Table implements SmartListItem {
         if (!$tmp_info)
             return null;
 
-        $cache_item = self::getSelfCacheForClassnameAndId(static::class, $tmp_info[$this->getFieldAliasName('id')]);
-        if ($cache_item) {
-            $item = $cache_item;
-        } else {
-            $item = static::create();
-            $item->FROM = $this->FROM;
-        }
+        $item = static::create($tmp_info[$this->getFieldAliasName('id')]);
+        $item->FROM = $this->FROM;
 
         return $item;
     }
@@ -558,6 +542,7 @@ abstract class Table implements SmartListItem {
     }
 
     private function combineSql(Select $sql, array &$interfaces_info, int $depth): void {
+
         foreach ($this->getSelectFields() as $name => $info) {
             if (!$info['is_object'])
                 continue;
@@ -602,12 +587,7 @@ abstract class Table implements SmartListItem {
 
     private function loadDataFromInterfaceInfo(self $interface, array $interfaces_info, $tmp_info) {
         foreach ($interfaces_info as $name => $info) {
-            $cache_item = self::getSelfCacheForClassnameAndId(static::$FIELDS[$name]['type'], $tmp_info[$info['value']->getFieldAliasName('id')]);
-            if ($cache_item) {
-                $interface->info[$name] = $cache_item;
-            } else {
-                $interface->info[$name] = call_user_func([static::$FIELDS[$name]['type'], 'create']);
-            }
+            $interface->info[$name] = call_user_func([static::$FIELDS[$name]['type'], 'create'], $tmp_info[$info['value']->getFieldAliasName('id')]);
             $interface->info[$name]->FROM = $info['value']->FROM;
             $interface->info[$name]->loadDataFromInterfaceInfo($interface->info[$name], $info['child'], $tmp_info);
         }
@@ -722,6 +702,8 @@ abstract class Table implements SmartListItem {
         if ($item->isSetId()) {
             if (!isset(self::$SUPER_CACHE_TABLES[static::class][$item->id])) {
                 self::$SUPER_CACHE_TABLES[static::class][$item->id] = $item;
+            } else if (self::$SUPER_CACHE_TABLES[static::class][$item->id] !== $item) {
+                throw new \Exception('Init clone class!!');
             }
         }
     }
@@ -736,5 +718,16 @@ abstract class Table implements SmartListItem {
         if (isset(self::$SUPER_CACHE_TABLES[$class_name][$id]))
             return self::$SUPER_CACHE_TABLES[$class_name][$id];
         return null;
+    }
+
+    public static function print_r_super_cache() {
+        echo "\n";
+        foreach (self::$SUPER_CACHE_TABLES as $class_name => $object_list) {
+            /** @var self $object */
+            foreach ($object_list as $id => $object) {
+                echo "$class_name -> $id. Is_init: " . ($object->isLoadDataFromDB() ? 1 : 0) . "\n";
+            }
+        }
+        echo "\n";
     }
 }
