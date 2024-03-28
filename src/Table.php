@@ -60,7 +60,7 @@ abstract class Table implements SmartListItem {
         ]
     ];
 
-    protected static int|null $MAX_DEPTH = null;
+    protected int|null $MAX_DEPTH = null;
 
     protected static bool $IS_LOAD_DATA_DB_AFTER_CREATE = false; // Вытащить из БД данные после создания записи
 
@@ -292,6 +292,15 @@ abstract class Table implements SmartListItem {
         return $this;
     }
 
+    public function getMaxDepth(): int {
+        return is_null($this->MAX_DEPTH) ? Main::getMaxDepth() : $this->MAX_DEPTH;
+    }
+
+    public function setMaxDepth(?int $max_depth = null) {
+        $this->MAX_DEPTH = $max_depth;
+        return $this;
+    }
+
     protected function getUserField($name) {
         if ($this->fieldIsObject($name)) {
             $result = $this->base->info[$name] ?? null;
@@ -518,10 +527,6 @@ abstract class Table implements SmartListItem {
         $this->base->parent = $parent;
     }
 
-    private static function getMaxDepth(): int {
-        return is_null(static::$MAX_DEPTH) ? Main::getMaxDepth() : static::$MAX_DEPTH;
-    }
-
     private function getSelectFields(): array {
         if (!empty($this->base->cache_select_fields))
             return $this->base->cache_select_fields;
@@ -573,6 +578,9 @@ abstract class Table implements SmartListItem {
                 continue;
             }
 
+            if ($this->getMaxDepth() <= $depth)
+                continue;
+
             if (!empty($this->base->info[$name]))
                 $interface = $this->base->info[$name];
             else
@@ -594,8 +602,7 @@ abstract class Table implements SmartListItem {
                 $sql->addJoin($join);
                 $sql->addSelectList($interface_sql->getSelect());
 
-                if (static::getMaxDepth() > $depth)
-                    $interface->combineSql($sql, $interfaces_info[$name]['child'], $depth + 1);
+                $interface->combineSql($sql, $interfaces_info[$name]['child'], $depth + 1);
             }
         }
     }
@@ -696,10 +703,14 @@ abstract class Table implements SmartListItem {
 
                 $sql->addSelectList($interface_sql->getSelect());
 
-                /** @var Join $join */
-                $join = $item->getJoin('INNER');
-                if (!$interface_sql->getWhere()->isEmpty())
+                if (!$interface_sql->getWhere()->isEmpty()) {
+                    /** @var Join $join */
+                    $join = $item->getJoin('INNER');
                     $join->setWhere($interface_sql->getWhere());
+                } else {
+                    /** @var Join $join */
+                    $join = $item->getJoin(empty($info['is_required']) ? 'LEFT' : 'INNER');
+                }
                 $join->getWhere()->w_and($this->getFieldQueryName($field) . ' = ' . $item->getFieldQueryName('id'));
 
                 $sql->addJoin($join);
