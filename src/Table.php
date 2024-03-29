@@ -264,20 +264,9 @@ abstract class Table implements SmartListItem {
     }
 
     public function findAll(): SmartList {
-        $sql = $this->getSqlFilter();
         $result = new SmartList(static::class);
 
-        $sql->setLimit();
-
-        $interfaces_info = [];
-        $this->combineSql($sql, $interfaces_info, 0);
-
-        $tmp_info_q = Main::query($sql->setLimit()->getSql());
-        while ($tmp_info = $tmp_info_q->fetch()) {
-            $item = static::create($tmp_info[$this->getFieldAliasName('id')]);
-            $item->FROM = $this->FROM;
-            $this->loadDataFromInterfaceInfo($item, $interfaces_info, $tmp_info);
-
+        foreach ($this->findAllGen() as $item) {
             $result[] = $item;
         }
 
@@ -557,6 +546,28 @@ abstract class Table implements SmartListItem {
         return isset($this->base->custom_filter_condition);
     }
 
+    protected function setCustomFilterOrderBy(array $order_by = []): self {
+        $this->base->custom_filter_order_by = $order_by;
+        return $this;
+    }
+
+    protected function addCustomFilterOrderBy(array $order_by): self {
+        if (!isset($this->base->custom_filter_order_by))
+            $this->base->custom_filter_order_by = [];
+        $this->base->custom_filter_order_by += $order_by;
+        return $this;
+    }
+
+    protected function getCustomFilterOrderBy(): array {
+        if (!isset($this->base->custom_filter_order_by))
+            $this->base->custom_filter_order_by = [];
+        return $this->base->custom_filter_order_by;
+    }
+
+    protected function isSetCustomFilterOrderBy(): bool {
+        return isset($this->base->custom_filter_order_by);
+    }
+
     public Base $base;
 
     private function setParent(self $parent) {
@@ -723,6 +734,9 @@ abstract class Table implements SmartListItem {
         if (is_null($sql))
             $sql = $this->getSql();
 
+        if ($this->isSetCustomFilterOrderBy())
+            $sql->setOrderBy($this->getCustomFilterOrderBy());
+
         foreach (static::$FIELDS as $field => $info) {
             if (empty($this->base->modify_fields[$field]) && !(!empty($this->base->info[$field]) && $this->base->info[$field] instanceof self && !$this->base->info[$field]->isSetId()))
                 continue;
@@ -747,6 +761,9 @@ abstract class Table implements SmartListItem {
                     /** @var Join $join */
                     $join = $item->getJoin(empty($info['is_required']) ? 'LEFT' : 'INNER');
                 }
+                if (!empty($interface_sql->getOrderBy()))
+                    $sql->addOrderBy($interface_sql->getOrderBy());
+
                 $join->getWhere()->w_and($this->getFieldQueryName($field) . ' = ' . $item->getFieldQueryName('id'));
 
                 $sql->addJoin($join);
