@@ -9,6 +9,7 @@ class Main {
     private static \Closure $exec;
     private static \Closure $query;
     private static int $max_depth = 3;
+    private static bool $is_lazy_update = true;
 
     public static function setPDO(\PDO $pdo) {
         self::$pdo = $pdo;
@@ -47,5 +48,13 @@ class Main {
 
     public static function getMaxDepth(): int {
         return self::$max_depth;
+    }
+
+    public static function setIsLazyUpdate(bool $lazy_update): void {
+        self::$is_lazy_update = $lazy_update;
+    }
+
+    public static function getIsLazyUpdate(): bool {
+        return self::$is_lazy_update;
     }
 }

@@ -62,6 +62,7 @@ abstract class Table implements SmartListItem {
     ];
 
     protected int|null $MAX_DEPTH = null;
+    protected bool|null $IS_LAZY_UPDATE = null;
 
     protected static bool $IS_LOAD_DATA_DB_AFTER_CREATE = false; // Вытащить из БД данные после создания записи
 
@@ -321,8 +322,17 @@ abstract class Table implements SmartListItem {
         return is_null($this->MAX_DEPTH) ? Main::getMaxDepth() : $this->MAX_DEPTH;
     }
 
-    public function setMaxDepth(?int $max_depth = null) {
+    public function setMaxDepth(?int $max_depth = null): static {
         $this->MAX_DEPTH = $max_depth;
+        return $this;
+    }
+
+    public function getIsLazyUpdate(): bool {
+        return is_null($this->IS_LAZY_UPDATE) ? Main::getIsLazyUpdate() : $this->IS_LAZY_UPDATE;
+    }
+
+    public function setIsLazyUpdate(?int $is_lazy_update = null): static {
+        $this->IS_LAZY_UPDATE = $is_lazy_update;
         return $this;
     }
 
@@ -435,6 +445,8 @@ abstract class Table implements SmartListItem {
             $this->getFieldPlaceholder($name),
             $this->getRawValueFromDB($value)
         ];
+        if (!$this->getIsLazyUpdate())
+            $this->runUpdate();
     }
 
     protected function getRawValueFromDB($value) {
