@@ -284,6 +284,24 @@ abstract class Table implements SmartListItem {
         return $result;
     }
 
+    public function findAllGen(): \Generator {
+        $sql = $this->getSqlFilter();
+
+        $sql->setLimit();
+
+        $interfaces_info = [];
+        $this->combineSql($sql, $interfaces_info, 0);
+
+        $tmp_info_q = Main::query($sql->setLimit()->getSql());
+        while ($tmp_info = $tmp_info_q->fetch()) {
+            $item = static::create($tmp_info[$this->getFieldAliasName('id')]);
+            $item->FROM = $this->FROM;
+            $this->loadDataFromInterfaceInfo($item, $interfaces_info, $tmp_info);
+
+            yield $item;
+        }
+    }
+
     /** Если сейчас режим СОЗДАНИЯ записи в БД
      * @return bool
      */
