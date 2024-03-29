@@ -7,6 +7,7 @@ use DigitalStars\InterfaceDB\SmartList\SmartListItem;
 use DigitalStars\SimpleSQL\Components\From;
 use DigitalStars\SimpleSQL\Components\Join;
 use DigitalStars\SimpleSQL\Components\Where;
+use DigitalStars\SimpleSQL\Delete;
 use DigitalStars\SimpleSQL\Insert;
 use DigitalStars\SimpleSQL\Select;
 use DigitalStars\SimpleSQL\Update;
@@ -203,6 +204,23 @@ abstract class Table implements SmartListItem {
             $this->clearDbInfo();
 
         self::saveSelfCache($this);
+    }
+
+    public function removeItem() {
+        $this->initDbInfo();
+        if (!$this->isModeModify())
+            throw new Exception('Remove item not found');
+
+        $sql = Delete::create()
+            ->setFrom($this->getFrom())
+            ->setWhere(Where::create($this->getFieldRawName('id') . ' = ?i', [$this->base->id]))
+            ->setLimit(1);
+
+        Main::exec($sql->getSql());
+        $this->base->id = null;
+        $this->base->is_load_data_from_db = false;
+
+        return $this;
     }
 
     public static function create(?int $id = null) {
@@ -738,7 +756,7 @@ abstract class Table implements SmartListItem {
             if (!isset(self::$SUPER_CACHE_TABLES[static::class][$item->base->id])) {
                 self::$SUPER_CACHE_TABLES[static::class][$item->base->id] = $item;
             } else if (self::$SUPER_CACHE_TABLES[static::class][$item->base->id] !== $item) {
-                throw new \Exception('Init clone class!!');
+                throw new Exception('Init clone class!!');
             }
         }
     }
