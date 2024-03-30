@@ -48,6 +48,18 @@ abstract class Table implements SmartListItem {
                 ],
                 'access_modify' => true,                            // Доступ на изменение свойства (поисле создания записи в БД)
                 'is_required' => false                              // Обязательное свойство
+                'validate' => [                                     // Правила валидации. Может содержать несколько правил. Ниже примеры
+                    'equal' => 'test_string',                       // Проверка на равенство
+                    'not_equal' => 'test_string_2',                 // Проверка на неравенство
+                    'in' => ['test_1', 'test_2', 'test_3'],         // Проверка на вхождение в список
+                    'not_in' => ['test_4', 'test_5', 'test_6'],     // Проверка на отсутствие в списке
+                    'compare' => ['>', 0],                          // Сравнение
+                    'compare' => ['<', 100],                        // Сравнение
+                    'compare' => ['<=', 100],                       // Сравнение
+                    'compare' => ['>=', 0],                         // Сравнение
+                    'preg' => '/^test_\d+$/',                       // Проверка на соответствие регулярному выражению
+                    'func' => ['__this', 'validateCustomField']     // Проверка с помощью функции
+                ]                                                   // Если валидация не пройдена, будет выброшено исключение 'Value invalid'
             ],
         ];*/
 
@@ -57,7 +69,19 @@ abstract class Table implements SmartListItem {
             'default' => null,
             'access_modify' => false,
             'is_required' => false,
-            'db' => 'id'
+            'db' => 'id',
+            'validate' => [
+                'equal' => 'test_string',
+                'not_equal' => 'test_string_2',
+                'in' => ['test_1', 'test_2', 'test_3'],
+                'not_in' => ['test_4', 'test_5', 'test_6'],
+                'compare' => ['>', 0],
+                'compare' => ['<', 100],
+                'compare' => ['<=', 100],
+                'compare' => ['>=', 0],
+                'preg' => '/^test_\d+$/',
+                'func' => ['__this', 'validateCustomField']
+            ]
         ]
     ];
 
@@ -369,6 +393,9 @@ abstract class Table implements SmartListItem {
         if ($name === 'id') {
             throw new Exception('ID is not modify');
         }
+
+        if (!$this->fieldValidateCustom($name, $value))
+            throw new Exception('Value invalid');
 
         $this->initDbInfo();
 
@@ -740,6 +767,49 @@ abstract class Table implements SmartListItem {
         }
 
         throw new Exception("$name Not found in " . get_class($this));
+    }
+
+    private function fieldValidateCustom($name, $value): bool {
+        if (empty(static::$FIELDS[$name]['validate']))
+            return true;
+
+        $raw_value = $this->getRawValueFromDB($value);
+
+        if (isset(static::$FIELDS[$name]['validate']['equal']) && static::$FIELDS[$name]['validate']['equal'] !== $raw_value)
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['not_equal']) && static::$FIELDS[$name]['validate']['not_equal'] === $raw_value)
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['in']) && !in_array($raw_value, static::$FIELDS[$name]['validate']['in'], true))
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['not_in']) && in_array($raw_value, static::$FIELDS[$name]['validate']['not_in'], true))
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['compare'])) {
+            if (static::$FIELDS[$name]['validate']['compare'][0] === '>' && $raw_value <= static::$FIELDS[$name]['validate']['compare'][1])
+                return false;
+            if (static::$FIELDS[$name]['validate']['compare'][0] === '<' && $raw_value >= static::$FIELDS[$name]['validate']['compare'][1])
+                return false;
+            if (static::$FIELDS[$name]['validate']['compare'][0] === '>=' && $raw_value < static::$FIELDS[$name]['validate']['compare'][1])
+                return false;
+            if (static::$FIELDS[$name]['validate']['compare'][0] === '<=' && $raw_value > static::$FIELDS[$name]['validate']['compare'][1])
+                return false;
+        }
+
+        if (isset(static::$FIELDS[$name]['validate']['preg']) && !preg_match(static::$FIELDS[$name]['validate']['preg'], $raw_value))
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['func'])) {
+            $func = static::$FIELDS[$name]['validate']['func'];
+            if ($func[0] === '__this')
+                $func[0] = $this;
+            if (!$func($value, $name))
+                return false;
+        }
+
+        return true;
     }
 
     private function getSqlFilter(Select $sql = null): Select {
