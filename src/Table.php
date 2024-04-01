@@ -70,18 +70,18 @@ abstract class Table implements SmartListItem {
             'access_modify' => false,
             'is_required' => false,
             'db' => 'id',
-            'validate' => [
-                'equal' => 'test_string',
-                'not_equal' => 'test_string_2',
-                'in' => ['test_1', 'test_2', 'test_3'],
-                'not_in' => ['test_4', 'test_5', 'test_6'],
-                'compare' => ['>', 0],
-                'compare' => ['<', 100],
-                'compare' => ['<=', 100],
-                'compare' => ['>=', 0],
-                'preg' => '/^test_\d+$/',
-                'func' => ['__this', 'validateCustomField']
-            ]
+//            'validate' => [
+//                'equal' => 'test_string',
+//                'not_equal' => 'test_string_2',
+//                'in' => ['test_1', 'test_2', 'test_3'],
+//                'not_in' => ['test_4', 'test_5', 'test_6'],
+//                'compare' => ['>', 0],
+//                'compare' => ['<', 100],
+//                'compare' => ['<=', 100],
+//                'compare' => ['>=', 0],
+//                'preg' => '/^test_\d+$/',
+//                'func' => ['__this', 'validateCustomField']
+//            ]
         ]
     ];
 
@@ -521,6 +521,9 @@ abstract class Table implements SmartListItem {
             $item = static::create($tmp_info[$this->getFieldAliasName('id')]);
             $item->FROM = $this->FROM;
 
+            if (!$item->isLoadDataFromDB())
+                $item->parseDbData($tmp_info);
+
             $result[] = $item;
         }
 
@@ -537,6 +540,9 @@ abstract class Table implements SmartListItem {
 
         $item = static::create($tmp_info[$this->getFieldAliasName('id')]);
         $item->FROM = $this->FROM;
+
+        if (!$item->isLoadDataFromDB())
+            $item->parseDbData($tmp_info);
 
         return $item;
     }
