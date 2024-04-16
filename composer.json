@@ -14,7 +14,7 @@
     }
   ],
   "require": {
-    "php": ">=8.0",
+    "php": ">=8.1",
     "digitalstars/simple-sql": "^1.0",
     "ext-pdo": "*"
   },

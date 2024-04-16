@@ -16,6 +16,7 @@ use DigitalStars\SimpleSQL\Update;
  * @property-read  int id
  */
 abstract class Table implements SmartListItem {
+    use Tools;
 
     /*    protected static array $FIELDS = [                        // Описание типов магических свойств
             'id' => [                                               // Ключ - имя магического свойства
@@ -360,6 +361,26 @@ abstract class Table implements SmartListItem {
         return $this;
     }
 
+    public static function getFromRaw(): From {
+        return From::create(static::$SQL_FROM, static::$SQL_ALIAS);
+    }
+
+    public function ref(): TableReflection {
+        static $table_reflection = null;
+        if (!$table_reflection)
+            $table_reflection = TableReflection::create($this->getFrom(), $this->getFieldRawName('id'));
+
+        return $table_reflection;
+    }
+
+    public static function refRaw(): TableReflection {
+        static $table_reflection = null;
+        if (!$table_reflection)
+            $table_reflection = TableReflection::create(static::getFromRaw(), static::$FIELDS['id']['db'] ?? 'id');
+
+        return $table_reflection;
+    }
+
     protected function getUserField($name) {
         if ($this->fieldIsObject($name)) {
             $result = $this->base->info[$name] ?? null;
@@ -561,10 +582,6 @@ abstract class Table implements SmartListItem {
         return $this->FROM;
     }
 
-    protected static function getFromRaw(): From {
-        return From::create(static::$SQL_FROM, static::$SQL_ALIAS);
-    }
-
     protected function fieldIsObject($name) {
         return $this->getSelectFields()[$name]['is_object'];
     }
@@ -729,50 +746,6 @@ abstract class Table implements SmartListItem {
             }
         }
         return $value;
-    }
-
-    private function fieldValidateType(string $name, $value) {
-        if (static::$FIELDS[$name]['type'] === 'bool') {
-            if (!empty(static::$FIELDS[$name]['is_required']))
-                return (bool)$value;
-            else
-                return is_null($value) ? null : (bool)$value;
-        }
-
-        if (static::$FIELDS[$name]['type'] === 'int') {
-            if (!empty(static::$FIELDS[$name]['is_required']))
-                return (int)$value;
-            else
-                return is_null($value) ? null : (int)$value;
-        }
-
-        if (static::$FIELDS[$name]['type'] === 'double') {
-            if (!empty(static::$FIELDS[$name]['is_required']))
-                return (double)$value;
-            else
-                return is_null($value) ? null : (double)$value;
-        }
-
-        if (static::$FIELDS[$name]['type'] === 'string') {
-            if (!empty(static::$FIELDS[$name]['is_required']))
-                return (string)$value;
-            else
-                return is_null($value) ? null : (string)$value;
-        }
-
-        if (!empty(static::$FIELDS[$name]['type'])) {
-            $class_name = static::$FIELDS[$name]['type'];
-
-            if (is_null($value) && !empty(static::$FIELDS[$name]['is_required']))
-                throw new Exception("$name Not access NULL");
-
-            if (!is_null($value) && !is_a($value, $class_name))
-                throw new Exception("$name Not object class " . static::$FIELDS[$name]['type']);
-
-            return $value;
-        }
-
-        throw new Exception("$name Not found in " . get_class($this));
     }
 
     private function fieldValidateCustom($name, $value): bool {
