@@ -3,47 +3,46 @@
 namespace DigitalStars\InterfaceDB;
 
 trait Tools {
-    private function fieldValidateType(string $name, $value) {
-        if (static::$FIELDS[$name]['type'] === 'bool') {
-            if (!empty(static::$FIELDS[$name]['is_required']))
-                return (bool)$value;
-            else
-                return is_null($value) ? null : (bool)$value;
+    private function fieldValidateCustom($name, $value): bool {
+        if (empty(static::$FIELDS[$name]['validate']))
+            return true;
+
+        $raw_value = $value instanceof self ? $value->getId() : $value;
+
+        if (isset(static::$FIELDS[$name]['validate']['equal']) && static::$FIELDS[$name]['validate']['equal'] !== $raw_value)
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['not_equal']) && static::$FIELDS[$name]['validate']['not_equal'] === $raw_value)
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['in']) && !in_array($raw_value, static::$FIELDS[$name]['validate']['in'], true))
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['not_in']) && in_array($raw_value, static::$FIELDS[$name]['validate']['not_in'], true))
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['compare'])) {
+            if (static::$FIELDS[$name]['validate']['compare'][0] === '>' && $raw_value <= static::$FIELDS[$name]['validate']['compare'][1])
+                return false;
+            if (static::$FIELDS[$name]['validate']['compare'][0] === '<' && $raw_value >= static::$FIELDS[$name]['validate']['compare'][1])
+                return false;
+            if (static::$FIELDS[$name]['validate']['compare'][0] === '>=' && $raw_value < static::$FIELDS[$name]['validate']['compare'][1])
+                return false;
+            if (static::$FIELDS[$name]['validate']['compare'][0] === '<=' && $raw_value > static::$FIELDS[$name]['validate']['compare'][1])
+                return false;
         }
 
-        if (static::$FIELDS[$name]['type'] === 'int') {
-            if (!empty(static::$FIELDS[$name]['is_required']))
-                return (int)$value;
-            else
-                return is_null($value) ? null : (int)$value;
+        if (isset(static::$FIELDS[$name]['validate']['preg']) && !preg_match(static::$FIELDS[$name]['validate']['preg'], $raw_value))
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['func'])) {
+            $func = static::$FIELDS[$name]['validate']['func'];
+            if ($func[0] === '__this')
+                $func[0] = $this;
+            if (!$func($value, $name))
+                return false;
         }
 
-        if (static::$FIELDS[$name]['type'] === 'double') {
-            if (!empty(static::$FIELDS[$name]['is_required']))
-                return (double)$value;
-            else
-                return is_null($value) ? null : (double)$value;
-        }
-
-        if (static::$FIELDS[$name]['type'] === 'string') {
-            if (!empty(static::$FIELDS[$name]['is_required']))
-                return (string)$value;
-            else
-                return is_null($value) ? null : (string)$value;
-        }
-
-        if (!empty(static::$FIELDS[$name]['type'])) {
-            $class_name = static::$FIELDS[$name]['type'];
-
-            if (is_null($value) && !empty(static::$FIELDS[$name]['is_required']))
-                throw new Exception("$name Not access NULL");
-
-            if (!is_null($value) && !is_a($value, $class_name))
-                throw new Exception("$name Not object class " . static::$FIELDS[$name]['type']);
-
-            return $value;
-        }
-
-        throw new Exception("$name Not found in " . get_class($this));
+        return true;
     }
 }

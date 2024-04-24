@@ -3,6 +3,8 @@
 namespace DigitalStars\InterfaceDB\SmartList;
 
 use DigitalStars\InterfaceDB\Exception;
+use DigitalStars\InterfaceDB\Field\WithoutType;
+use DigitalStars\InterfaceDB\Table;
 
 class SmartList implements \ArrayAccess, \IteratorAggregate {
     protected array $list = [];
@@ -120,8 +122,9 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
     }
 
     public function setField(string $field, $value): void {
+        /** @var Table $item */
         foreach ($this->list as $item)
-            $item->$field = $value;
+            $item->setField($field, $value);
     }
 
     public function runMethod(string $method, ...$args) {
@@ -135,14 +138,15 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
      * @return $this
      */
     public function sortByField(string $field, bool $direction = true): static {
-        if ($direction)
-            $callback = function($a, $b) use ($field) {
-                return $a->$field <=> $b->$field;
+        if ($direction) {
+            $callback = function (Table $a, Table $b) use ($field) {
+                return $a->getField($field)->raw() <=> $b->getField($field)->raw();
             };
-        else
-            $callback = function($a, $b) use ($field) {
-                return $b->$field <=> $a->$field;
+        } else {
+            $callback = function (Table $a, Table $b) use ($field) {
+                return $b->getField($field)->raw() <=> $a->getField($field)->raw();
             };
+        }
         usort($this->list, $callback);
         return $this;
     }
@@ -150,8 +154,12 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
     public function searchByField(string $field, $value, int $max_count = null): static {
         $result = new static($this->class_name);
         $count = 0;
+        if ($value instanceof Table || $value instanceof WithoutType)
+            $value = $value->raw();
+
+        /** @var Table $item */
         foreach ($this->list as $item) {
-            if ($item->$field === $value) {
+            if ($item->getField($field)->raw() === $value) {
                 $result[] = $item;
                 ++$count;
                 if (!is_null($max_count) && $count >= $max_count)
@@ -191,22 +199,28 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
 
     public function getSum(string $field): int {
         $sum = 0;
+
+        /** @var Table $item */
         foreach ($this->list as $item)
-            $sum += $item->$field;
+            $sum += $item->getField($field)->raw();
         return $sum;
     }
 
     public function getFields(string $field): array {
         $fields = [];
+
+        /** @var Table $item */
         foreach ($this->list as $item)
-            $fields[] = $item->$field;
+            $fields[] = $item->getField($field);
         return $fields;
     }
 
     public function getFieldsObject(string $field, string $object_class_name): static {
         $fields = new static($object_class_name);
+
+        /** @var Table $item */
         foreach ($this->list as $item)
-            $fields[] = $item->$field;
+            $fields[] = $item->getField($field);
         return $fields;
     }
 
@@ -235,8 +249,9 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
     }
 
     public function removeByField(string $field, $value): void {
+        /** @var Table $item */
         foreach ($this->list as $key => $item)
-            if ($item->$field === $value)
+            if ($item->getField($field)->raw() === $value)
                 unset($this->list[$key]);
     }
 

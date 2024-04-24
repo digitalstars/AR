@@ -2,11 +2,11 @@
 
 namespace DigitalStars\InterfaceDB;
 
+use DigitalStars\InterfaceDB\Field\FInt;
 use DigitalStars\SimpleSQL\Components\Where;
 
-class Base {
+class Store {
     public array $info = [];
-    public ?int $id;
     public bool $is_load_data_from_db = false;
     public array $modify_fields = [];
     public array $cache_select_fields = [];
