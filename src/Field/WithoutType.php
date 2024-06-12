@@ -3,12 +3,13 @@
 namespace DigitalStars\InterfaceDB\Field;
 
 use DigitalStars\InterfaceDB\Exception;
+use DigitalStars\InterfaceDB\SmartList\SmartListItemValue;
 use DigitalStars\InterfaceDB\Table;
 
 /**
  * @property mixed val
  */
-class WithoutType {
+class WithoutType implements SmartListItemValue {
 
     private FReflection $ref;
     private ?Table $table = null;
@@ -25,7 +26,7 @@ class WithoutType {
         return $this->ref;
     }
 
-    public function raw() {
+    public function raw(): mixed {
         return $this->getValue();
     }
 

@@ -20,7 +20,6 @@ use DigitalStars\SimpleSQL\Update;
  * @property-read  FInt id
  */
 abstract class Table implements SmartListItem {
-    use Tools;
 
     /*    protected static array $FIELDS = [                        // Описание типов магических свойств
             'id' => [                                               // Ключ - имя магического свойства
@@ -167,7 +166,7 @@ abstract class Table implements SmartListItem {
         $this->fields[$name] = $this->createField($name, $this->store->info[$name]);
     }
 
-    public function getField($name): self|WithoutType {
+    public function getField(string $name): self|WithoutType {
         if (empty(static::$FIELDS[$name]))
             throw new Exception("Field $name is not found in: " . static::class);
 
@@ -242,13 +241,13 @@ abstract class Table implements SmartListItem {
         $this->ref = $ref;
     }
 
-    public function raw() {
+    public function raw(): ?int {
         return $this->getId();
     }
 
     // Сеттеры поля
 
-    public function setField($name, $value) {
+    public function setField($name, $value): ?static {
         if (empty(static::$FIELDS[$name]))
             throw new Exception("Field $name is not found in: " . static::class);
 
@@ -391,23 +390,26 @@ abstract class Table implements SmartListItem {
 
     // Информация о SQL данных Table
 
-    public function getSql(): Select {
+    public function getSql(bool $is_add_original_name = false): Select {
         $fields_select = [];
         foreach (static::$FIELDS as $name => $value) {
             $field_ref = $this->getField($name)->ref();
             $fields_select[$field_ref->select_name] = $field_ref->query_name;
+            if ($is_add_original_name) {
+                $fields_select[$field_ref->db_name] = $field_ref->query_name;
+            }
         }
         return Select::create()
             ->setSelect($fields_select)
-            ->setFrom($this->getFrom())
+            ->setFrom($this->getFromAlias())
             ->setLimit(1);
     }
 
     public function getJoin(string $type = 'INNER'): Join {
-        return Join::create($type, $this->getFrom());
+        return Join::create($type, $this->getFromAlias());
     }
 
-    protected function getFrom(): From {
+    private function getFromAlias(): From {
         if (!isset($this->FROM)) {
             $this->FROM = static::getFromRaw();
             $this->FROM->setAlias(static::$SQL_ALIAS . $this->generateRandAliasPrefix());
@@ -416,12 +418,22 @@ abstract class Table implements SmartListItem {
         return $this->FROM;
     }
 
+    public function getFrom(): From {
+        if (!$this->getModifyFields()) {
+            return $this->getFromAlias();
+        }
+        $sql = $this->getSql(true);
+        $sql = $this->getSqlFilter($sql);
+
+        return From::create($sql, $this->getFromAlias()->getAlias());
+    }
+
     public static function getFromRaw(): From {
         return From::create(static::$SQL_FROM, static::$SQL_ALIAS);
     }
 
     private function generateRandAliasPrefix(): string {
-        return 't' . rand(1000, 9999);
+        return 't' . Main::getUniqueKey();
     }
 
     // Инициализация поля
@@ -430,7 +442,7 @@ abstract class Table implements SmartListItem {
         if (empty(static::$FIELDS[$name]))
             throw new Exception('Field name is invalid');
 
-        $alias = $this->getFrom()->getAlias();
+        $alias = $this->getFromAlias()->getAlias();
         $db_name = $this->getFieldRawName($name);
         $result = WithoutType::create(
             static::$FIELDS[$name]['type'],
@@ -517,7 +529,7 @@ abstract class Table implements SmartListItem {
             throw new Exception('Create is not access');
 
         $sql = Insert::create()
-            ->setFrom($this->getFrom());
+            ->setFrom($this->getFromAlias());
 
         $values = [];
         foreach (static::$FIELDS as $name => $info) {
@@ -555,7 +567,7 @@ abstract class Table implements SmartListItem {
         $id_ref = $id->ref();
 
         $sql = Delete::create()
-            ->setFrom($this->getFrom())
+            ->setFrom($this->getFromAlias())
             ->setWhere(Where::create("$id_ref->db_name = $id_ref->placeholder", [$id->raw()]))
             ->setLimit(1);
 
@@ -578,7 +590,7 @@ abstract class Table implements SmartListItem {
         $id_ref = $id->ref();
 
         $sql = Update::create()
-            ->setFrom($this->getFrom())
+            ->setFrom($this->getFromAlias())
             ->setWhere(Where::create("$id_ref->query_name = $id_ref->placeholder", [$id->raw()]))
             ->setLimit(1);
 
@@ -869,5 +881,50 @@ abstract class Table implements SmartListItem {
 
             yield $item;
         }
+    }
+
+    // Валидация кастомная
+
+    private function fieldValidateCustom($name, $value): bool {
+        if (empty(static::$FIELDS[$name]['validate']))
+            return true;
+
+        $raw_value = $value instanceof self ? $value->getId() : $value;
+
+        if (isset(static::$FIELDS[$name]['validate']['equal']) && static::$FIELDS[$name]['validate']['equal'] !== $raw_value)
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['not_equal']) && static::$FIELDS[$name]['validate']['not_equal'] === $raw_value)
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['in']) && !in_array($raw_value, static::$FIELDS[$name]['validate']['in'], true))
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['not_in']) && in_array($raw_value, static::$FIELDS[$name]['validate']['not_in'], true))
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['compare'])) {
+            if (static::$FIELDS[$name]['validate']['compare'][0] === '>' && $raw_value <= static::$FIELDS[$name]['validate']['compare'][1])
+                return false;
+            if (static::$FIELDS[$name]['validate']['compare'][0] === '<' && $raw_value >= static::$FIELDS[$name]['validate']['compare'][1])
+                return false;
+            if (static::$FIELDS[$name]['validate']['compare'][0] === '>=' && $raw_value < static::$FIELDS[$name]['validate']['compare'][1])
+                return false;
+            if (static::$FIELDS[$name]['validate']['compare'][0] === '<=' && $raw_value > static::$FIELDS[$name]['validate']['compare'][1])
+                return false;
+        }
+
+        if (isset(static::$FIELDS[$name]['validate']['preg']) && !preg_match(static::$FIELDS[$name]['validate']['preg'], $raw_value))
+            return false;
+
+        if (isset(static::$FIELDS[$name]['validate']['func'])) {
+            $func = static::$FIELDS[$name]['validate']['func'];
+            if ($func[0] === '__this')
+                $func[0] = $this;
+            if (!$func($value, $name))
+                return false;
+        }
+
+        return true;
     }
 }

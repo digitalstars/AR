@@ -122,7 +122,7 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
     }
 
     public function setField(string $field, $value): void {
-        /** @var Table $item */
+        /** @var SmartListItem $item */
         foreach ($this->list as $item)
             $item->setField($field, $value);
     }
@@ -139,11 +139,11 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
      */
     public function sortByField(string $field, bool $direction = true): static {
         if ($direction) {
-            $callback = function (Table $a, Table $b) use ($field) {
+            $callback = function (SmartListItem $a, SmartListItem $b) use ($field) {
                 return $a->getField($field)->raw() <=> $b->getField($field)->raw();
             };
         } else {
-            $callback = function (Table $a, Table $b) use ($field) {
+            $callback = function (SmartListItem $a, SmartListItem $b) use ($field) {
                 return $b->getField($field)->raw() <=> $a->getField($field)->raw();
             };
         }
@@ -154,10 +154,10 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
     public function searchByField(string $field, $value, int $max_count = null): static {
         $result = new static($this->class_name);
         $count = 0;
-        if ($value instanceof Table || $value instanceof WithoutType)
+        if ($value instanceof SmartListItem || $value instanceof SmartListItemValue)
             $value = $value->raw();
 
-        /** @var Table $item */
+        /** @var SmartListItem $item */
         foreach ($this->list as $item) {
             if ($item->getField($field)->raw() === $value) {
                 $result[] = $item;
@@ -200,16 +200,17 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
     public function getSum(string $field): int {
         $sum = 0;
 
-        /** @var Table $item */
+        /** @var SmartListItem $item */
         foreach ($this->list as $item)
-            $sum += $item->getField($field)->raw();
+            if (is_numeric($item->getField($field)->raw()))
+                $sum += $item->getField($field)->raw();
         return $sum;
     }
 
     public function getFields(string $field): array {
         $fields = [];
 
-        /** @var Table $item */
+        /** @var SmartListItem $item */
         foreach ($this->list as $item)
             $fields[] = $item->getField($field);
         return $fields;
@@ -218,9 +219,10 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
     public function getFieldsObject(string $field, string $object_class_name): static {
         $fields = new static($object_class_name);
 
-        /** @var Table $item */
+        /** @var SmartListItem $item */
         foreach ($this->list as $item)
-            $fields[] = $item->getField($field);
+            if ($item->getField($field) instanceof SmartListItem)
+                $fields[] = $item->getField($field);
         return $fields;
     }
 
@@ -249,7 +251,10 @@ class SmartList implements \ArrayAccess, \IteratorAggregate {
     }
 
     public function removeByField(string $field, $value): void {
-        /** @var Table $item */
+        if ($value instanceof SmartListItem || $value instanceof SmartListItemValue)
+            $value = $value->raw();
+
+        /** @var SmartListItem $item */
         foreach ($this->list as $key => $item)
             if ($item->getField($field)->raw() === $value)
                 unset($this->list[$key]);

@@ -57,4 +57,9 @@ class Main {
     public static function getIsLazyUpdate(): bool {
         return self::$is_lazy_update;
     }
+
+    public static function getUniqueKey(): int {
+        static $key = 0;
+        return ++$key;
+    }
 }
