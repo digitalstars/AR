@@ -1,13 +1,17 @@
 <?php
 
-namespace DigitalStars\InterfaceDB;
+namespace DigitalStars\AR;
 
-use DigitalStars\InterfaceDB\Field\FInt;
-use DigitalStars\InterfaceDB\Field\FLink;
-use DigitalStars\InterfaceDB\Field\FReflection;
-use DigitalStars\InterfaceDB\Field\WithoutType;
-use DigitalStars\InterfaceDB\SmartList\SmartList;
-use DigitalStars\InterfaceDB\SmartList\SmartListItem;
+use JsonSerializable;
+use DigitalStars\AR\Field\FInt;
+use DigitalStars\AR\Field\FLink;
+use DigitalStars\AR\Field\Reflection;
+use DigitalStars\AR\Field\WithoutType;
+use DigitalStars\AR\Helpers\Store;
+use DigitalStars\AR\Helpers\TableBase;
+use DigitalStars\AR\Helpers\TableCache;
+use DigitalStars\AR\SmartList\SmartList;
+use DigitalStars\AR\SmartList\SmartListItem;
 use DigitalStars\SimpleSQL\Components\From;
 use DigitalStars\SimpleSQL\Components\Join;
 use DigitalStars\SimpleSQL\Components\Where;
@@ -19,7 +23,8 @@ use DigitalStars\SimpleSQL\Update;
 /**
  * @property-read  FInt id
  */
-abstract class Table implements SmartListItem {
+abstract class Table implements SmartListItem, JsonSerializable {
+    use TableBase;
 
     /*    protected static array $FIELDS = [                        // Описание типов магических свойств
             'id' => [                                               // Ключ - имя магического свойства
@@ -98,12 +103,12 @@ abstract class Table implements SmartListItem {
     protected static bool $IS_LOAD_DATA_DB_AFTER_CREATE = false; // Вытащить из БД данные после создания записи
 
     private Store $store;
-    private FReflection $ref;
+    private Reflection $ref;
     protected From $FROM;
     private array $fields = [];
 
-    // Магические свойства и обработка значений по умолчанию
-    protected function __construct(?int $id = null) {
+    // конструкторы
+    private function __construct(?int $id = null) {
         $this->store = new Store();
         $this->store->info['id'] = $id;
         $this->fields['id'] = $this->createField('id', $this->store->info['id']);
@@ -117,23 +122,15 @@ abstract class Table implements SmartListItem {
         return new static($id);
     }
 
-    public function __set($name, $value) {
-        if (empty(static::$FIELDS[$name]) || static::$FIELDS[$name]['type'] !== FLink::TYPE)
-            throw new Exception('Maybe usage `->val`?');
-        $this->setField($name, $value);
-    }
-
-    public function __isset($name) {
-        return isset(static::$FIELDS[$name]);
-    }
+    // Магические методы
 
     public function __destruct() {
         if ($this->isModeModify())
             $this->updateItem();
     }
 
-    public function __get($name) {
-        return $this->getField($name);
+    public function __isset($name) {
+        return isset(static::$FIELDS[$name]);
     }
 
     // Геттеры поля
@@ -164,21 +161,6 @@ abstract class Table implements SmartListItem {
         if (empty($this->store->info[$name]))
             $this->store->info[$name] = null;
         $this->fields[$name] = $this->createField($name, $this->store->info[$name]);
-    }
-
-    public function getField(string $name): self|WithoutType {
-        if (empty(static::$FIELDS[$name]))
-            throw new Exception("Field $name is not found in: " . static::class);
-
-        if ($this->isTableField($name)) {
-            return $this->getFieldRaw($name);
-        }
-
-        if (empty($this->fields[$name])) {
-            $this->createEmptyField($name);
-        }
-
-        return $this->fields[$name];
     }
 
     private function getFieldRaw($name) {
@@ -233,16 +215,12 @@ abstract class Table implements SmartListItem {
         return $value;
     }
 
-    public function ref(): FReflection {
+    public function ref(): Reflection {
         return $this->ref;
     }
 
-    private function setRef(FReflection $ref) {
+    private function setRef(Reflection $ref) {
         $this->ref = $ref;
-    }
-
-    public function raw(): ?int {
-        return $this->getId();
     }
 
     // Сеттеры поля
@@ -309,7 +287,7 @@ abstract class Table implements SmartListItem {
     // Информация о Table
 
     public function getMaxDepth(): int {
-        return is_null($this->MAX_DEPTH) ? Main::getMaxDepth() : $this->MAX_DEPTH;
+        return is_null($this->MAX_DEPTH) ? Settings::getMaxDepth() : $this->MAX_DEPTH;
     }
 
     public function setMaxDepth(?int $max_depth = null): static {
@@ -318,7 +296,7 @@ abstract class Table implements SmartListItem {
     }
 
     public function getIsLazyUpdate(): bool {
-        return is_null($this->IS_LAZY_UPDATE) ? Main::getIsLazyUpdate() : $this->IS_LAZY_UPDATE;
+        return is_null($this->IS_LAZY_UPDATE) ? Settings::getIsLazyUpdate() : $this->IS_LAZY_UPDATE;
     }
 
     public function setIsLazyUpdate(?int $is_lazy_update = null): static {
@@ -433,7 +411,7 @@ abstract class Table implements SmartListItem {
     }
 
     private function generateRandAliasPrefix(): string {
-        return 't' . Main::getUniqueKey();
+        return 't' . Settings::getUniqueKey();
     }
 
     // Инициализация поля
@@ -517,7 +495,7 @@ abstract class Table implements SmartListItem {
         $interfaces = [];
         $this->combineSql($sql, $interfaces, 0);
 
-        $tmp_data = Main::query($sql->getSql())?->fetch(\PDO::FETCH_ASSOC);
+        $tmp_data = Settings::query($sql->getSql())?->fetch(\PDO::FETCH_ASSOC);
 
         $this->loadDataFromInterfaceInfo($this, $interfaces, $tmp_data);
 
@@ -547,8 +525,8 @@ abstract class Table implements SmartListItem {
         }
         $sql->addValues($values);
 
-        Main::exec($sql->getSql());
-        $this->setFieldRaw('id', Main::getPDO()->lastInsertId());
+        Settings::exec($sql->getSql());
+        $this->setFieldRaw('id', Settings::getPDO()->lastInsertId());
 
         $this->store->is_load_data_from_db = true;
 
@@ -571,7 +549,7 @@ abstract class Table implements SmartListItem {
             ->setWhere(Where::create("$id_ref->db_name = $id_ref->placeholder", [$id->raw()]))
             ->setLimit(1);
 
-        Main::exec($sql->getSql());
+        Settings::exec($sql->getSql());
         $this->store->is_load_data_from_db = false;
         unset($this->store->info['id']);
         unset($this->fields['id']);
@@ -597,7 +575,7 @@ abstract class Table implements SmartListItem {
         foreach ($this->store->update_fields as $name => $data)
             $sql->addSet($data[0], $data[1], $data[2]);
 
-        Main::exec($sql->getSql());
+        Settings::exec($sql->getSql());
         $this->store->update_fields = [];
     }
 
@@ -842,7 +820,7 @@ abstract class Table implements SmartListItem {
         $interfaces_info = [];
         $this->combineSql($sql, $interfaces_info, 0);
 
-        $tmp_info = Main::query($sql->setLimit()->getSql())?->fetch(\PDO::FETCH_ASSOC);
+        $tmp_info = Settings::query($sql->setLimit()->getSql())?->fetch(\PDO::FETCH_ASSOC);
 
         if (!$tmp_info)
             return null;
@@ -873,7 +851,7 @@ abstract class Table implements SmartListItem {
         $interfaces_info = [];
         $this->combineSql($sql, $interfaces_info, 0);
 
-        $tmp_info_q = Main::query($sql->setLimit()->getSql());
+        $tmp_info_q = Settings::query($sql->setLimit()->getSql());
         while ($tmp_info = $tmp_info_q->fetch()) {
             $item = static::create($tmp_info[$this->getField('id')->ref()->select_name]);
             $item->FROM = $this->FROM;

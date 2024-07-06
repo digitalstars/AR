@@ -1,37 +1,35 @@
 <?php
 
-namespace DigitalStars\InterfaceDB;
+namespace DigitalStars\AR;
 
-use DigitalStars\InterfaceDB\Field\FInt;
-use DigitalStars\InterfaceDB\Field\FLink;
-use DigitalStars\InterfaceDB\Field\FReflection;
-use DigitalStars\InterfaceDB\Field\WithoutType;
-use DigitalStars\InterfaceDB\SmartList\SmartList;
-use DigitalStars\InterfaceDB\SmartList\SmartListItem;
-use DigitalStars\SimpleSQL\Components\From;
-use DigitalStars\SimpleSQL\Components\Join;
-use DigitalStars\SimpleSQL\Components\Where;
-use DigitalStars\SimpleSQL\Delete;
-use DigitalStars\SimpleSQL\Insert;
+use JsonSerializable;
+use DigitalStars\AR\Field\FInt;
+use DigitalStars\AR\Field\FLink;
+use DigitalStars\AR\Field\FText;
+use DigitalStars\AR\Field\WithoutType;
+use DigitalStars\AR\Helpers\TableBase;
+use DigitalStars\AR\SmartList\SmartList;
+use DigitalStars\AR\SmartList\SmartListItem;
 use DigitalStars\SimpleSQL\Select;
-use DigitalStars\SimpleSQL\Update;
 
 /**
  * @property-read  int id
  */
-abstract class VirtualTable implements SmartListItem {
+abstract class VirtualTable implements SmartListItem, JsonSerializable {
+    use TableBase;
 
     protected static array $FIELDS = [
         'id' => [
-            'type' => 'int'
+            'type' => FText::TYPE
         ],
         'user_id' => [
-            'type' => 'int',
+            'type' => FInt::TYPE,
             'part_id' => true
         ]
     ];
 
     private array $info;
+    private array $fields;
     private Select $sql;
     private ?string $id;
 
@@ -40,16 +38,8 @@ abstract class VirtualTable implements SmartListItem {
         $this->sql = $sql;
     }
 
-    public function __get($name) {
-        return $this->getField($name);
-    }
-
-    public function __set($name, $value) {
-        return $this->setField($name, $value);
-    }
-
     public function __isset($name) {
-        return isset(static::$FIELDS[$name]);
+        return isset(static::$FIELDS[$name]) || $name === 'id';
     }
 
     public function getId(): mixed {
@@ -90,14 +80,17 @@ abstract class VirtualTable implements SmartListItem {
 
     // Геттеры
 
-    public function getField(string $name): mixed {
-        if ($name === 'id')
-            return $this->getId();
-        return $this->info[$name] ?? null;
+    private function createEmptyField(string $name) {
+        $this->fields[$name] = $this->createField($name);
     }
 
-    public function raw(): ?int {
-        return $this->getId();
+    public function getFieldValue(string $name) {
+        if ($name === 'id')
+            return $this->getId();
+        if (empty(static::$FIELDS[$name]))
+            throw new Exception("Field $name is not found in: " . static::class);
+
+        return $this->info[$name];
     }
 
     public function getSql(): Select {
@@ -126,7 +119,7 @@ abstract class VirtualTable implements SmartListItem {
     }
 
     protected static function createGenerator(Select $sql): \Generator {
-        $tmp_info_q = Main::query($sql->getSql());
+        $tmp_info_q = Settings::query($sql->getSql());
 
         while ($tmp_info = $tmp_info_q->fetch()) {
             $item = new static($sql);
@@ -138,7 +131,33 @@ abstract class VirtualTable implements SmartListItem {
     // Информация о поле
 
     protected function isTableField($name): bool {
-        return is_subclass_of(static::$FIELDS[$name]['type'], Table::class);
+        return $name !== 'id' && static::$FIELDS[$name]['type'] === FLink::TYPE;
+    }
+
+    private function createField($name): FLink|Field\FBool|Field\FInt|Field\FText|Field\FDouble {
+        if (empty(static::$FIELDS[$name]) && $name !== 'id')
+            throw new Exception('Field name is invalid');
+
+        $field_info = $name !== 'id'
+            ? static::$FIELDS[$name]
+            : [
+                'type' => FText::TYPE,
+                'is_required' => true,
+                'access_modify' => false
+            ];
+
+        $result = WithoutType::create(
+            $field_info['type'],
+            $name,
+            $name,
+            $name,
+            $name,
+            !empty($field_info['is_required']),
+            !empty($field_info['access_modify']),
+            $this
+        );
+
+        return $result;
     }
 
     // Парсинг БД
@@ -150,29 +169,11 @@ abstract class VirtualTable implements SmartListItem {
         foreach (static::$FIELDS as $name => $info) {
             if ($this->isTableField($name)) {
                 $this->info[$name] = call_user_func(
-                    [static::$FIELDS[$name]['type'], 'create'], $tmp_info[$name]
+                    [static::$FIELDS[$name]['table'], 'create'], $tmp_info[$name]
                 );
             } else {
-                $this->info[$name] = $this->validateTypeField($name, $tmp_info[$name]);
+                $this->info[$name] = $tmp_info[$name];
             }
-        }
-    }
-
-    private function validateTypeField(string $name, $value) {
-        if (is_null($value))
-            return null;
-
-        switch (static::$FIELDS[$name]['type']) {
-            case 'bool':
-                return (bool)$value;
-            case 'double':
-                return (double)$value;
-            case 'int':
-                return (int)$value;
-            case 'string':
-                return (string)$value;
-            default:
-                return $value;
         }
     }
 }

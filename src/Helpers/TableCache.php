@@ -1,6 +1,9 @@
 <?php
 
-namespace DigitalStars\InterfaceDB;
+namespace DigitalStars\AR\Helpers;
+
+use DigitalStars\AR\Exception;
+use DigitalStars\AR\Table;
 
 class TableCache {
     private static array $SUPER_CACHE_TABLES = [];

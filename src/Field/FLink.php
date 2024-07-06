@@ -1,8 +1,8 @@
 <?php
 
-namespace DigitalStars\InterfaceDB\Field;
+namespace DigitalStars\AR\Field;
 
-use DigitalStars\InterfaceDB\Table;
+use DigitalStars\AR\Table;
 
 /**
  * @property Table|null val

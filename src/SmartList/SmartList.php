@@ -1,10 +1,10 @@
 <?php
 
-namespace DigitalStars\InterfaceDB\SmartList;
+namespace DigitalStars\AR\SmartList;
 
-use DigitalStars\InterfaceDB\Exception;
-use DigitalStars\InterfaceDB\Field\WithoutType;
-use DigitalStars\InterfaceDB\Table;
+use DigitalStars\AR\Exception;
+use DigitalStars\AR\Field\WithoutType;
+use DigitalStars\AR\Table;
 
 class SmartList implements \ArrayAccess, \IteratorAggregate {
     protected array $list = [];

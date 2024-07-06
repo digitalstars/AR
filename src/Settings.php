@@ -1,10 +1,10 @@
 <?php
 
-namespace DigitalStars\InterfaceDB;
+namespace DigitalStars\AR;
 
 use DigitalStars\SimpleSQL\Parser;
 
-class Main {
+class Settings {
     private static \PDO $pdo;
     private static \Closure $exec;
     private static \Closure $query;

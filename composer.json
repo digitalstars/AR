@@ -1,6 +1,6 @@
 {
-  "name": "digitalstars/interface-db",
-  "description": "Библиотека - интерфейс для БД",
+  "name": "digitalstars/ar",
+  "description": "Библиотека - AR для БД",
   "license": "MIT",
   "minimum-stability": "stable",
   "authors": [
@@ -20,7 +20,7 @@
   },
   "autoload": {
     "psr-4": {
-      "DigitalStars\\InterfaceDB\\": "src/"
+      "DigitalStars\\AR\\": "src/"
     }
   }
 }

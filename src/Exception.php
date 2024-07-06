@@ -1,6 +1,6 @@
 <?php
 
-namespace DigitalStars\InterfaceDB;
+namespace DigitalStars\AR;
 
 class Exception extends \Exception {
 

@@ -3,3 +3,4 @@ test/
 vendor/
 composer.phar
 composer.lock
+/src_old/

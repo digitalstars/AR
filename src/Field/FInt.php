@@ -1,6 +1,6 @@
 <?php
 
-namespace DigitalStars\InterfaceDB\Field;
+namespace DigitalStars\AR\Field;
 
 /**
  * @property int|null val

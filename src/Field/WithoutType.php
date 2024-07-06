@@ -1,28 +1,37 @@
 <?php
 
-namespace DigitalStars\InterfaceDB\Field;
+namespace DigitalStars\AR\Field;
 
-use DigitalStars\InterfaceDB\Exception;
-use DigitalStars\InterfaceDB\SmartList\SmartListItemValue;
-use DigitalStars\InterfaceDB\Table;
+use DigitalStars\AR\Exception;
+use DigitalStars\AR\SmartList\SmartListItemValue;
+use DigitalStars\AR\Table;
+use DigitalStars\AR\VirtualTable;
 
 /**
  * @property mixed val
  */
-class WithoutType implements SmartListItemValue {
+class WithoutType implements SmartListItemValue, \Stringable {
 
-    private FReflection $ref;
-    private ?Table $table = null;
+    private Reflection $ref;
+    private null|Table|VirtualTable $table = null;
 
     const TYPE = null;
 
-    public function __construct(string $select_name, string $query_name, string $db_name, string $name, bool $is_required, bool $is_access_modify, ?Table $table = null) {
-        $this->ref = new FReflection($select_name, $query_name, $db_name, $name, static::TYPE, $is_required, $is_access_modify, $table);
+    public function __construct(
+        string $select_name,
+        string $query_name,
+        string $db_name,
+        string $name,
+        bool   $is_required,
+        bool   $is_access_modify,
+        null|Table|VirtualTable $table = null
+    ) {
+        $this->ref = new Reflection($select_name, $query_name, $db_name, $name, static::TYPE, $is_required, $is_access_modify, $table);
 
         $this->table = $table;
     }
 
-    public function ref(): FReflection {
+    public function ref(): Reflection {
         return $this->ref;
     }
 
@@ -47,7 +56,7 @@ class WithoutType implements SmartListItemValue {
      * @return FInt|FBool|FDouble|FText|FLink
      * @throws Exception
      */
-    public static function create(?int $type, string $select_name, string $query_name, string $db_name, string $name, bool $is_required, bool $is_access_modify, ?Table $table = null): FInt|FBool|FDouble|FText|FLink {
+    public static function create(?int $type, string $select_name, string $query_name, string $db_name, string $name, bool $is_required, bool $is_access_modify, null|Table|VirtualTable $table = null): FInt|FBool|FDouble|FText|FLink {
         if ($type === FBool::TYPE)
             return new FBool($select_name, $query_name, $db_name, $name, $is_required, $is_access_modify, $table);
         else if ($type === FDouble::TYPE)
@@ -86,8 +95,12 @@ class WithoutType implements SmartListItemValue {
 
     public function setValue(mixed $value): void {
         if (!$this->table)
-            throw new Exception('Set value is not support in virtual table!');
+            throw new Exception('Set value is not support');
 
         $this->table->setField($this->ref->name, $value);
+    }
+
+    public function __toString(): string {
+        return $this->getValue();
     }
 }

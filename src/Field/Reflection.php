@@ -1,10 +1,11 @@
 <?php
 
-namespace DigitalStars\InterfaceDB\Field;
+namespace DigitalStars\AR\Field;
 
-use DigitalStars\InterfaceDB\Table;
+use DigitalStars\AR\Table;
+use DigitalStars\AR\VirtualTable;
 
-class FReflection {
+class Reflection {
 
     /**
      * @var string Плейсхолдер для типа поля для БД
@@ -26,14 +27,14 @@ class FReflection {
      * @param Table|null $parent Таблица, которой принадлежит этот объект
      */
     public function __construct(
-        public readonly string     $select_name,
-        public readonly string     $query_name,
-        public readonly string     $db_name,
-        public readonly string     $name,
-        public readonly int|null   $type,
-        public readonly bool       $is_required,
-        public readonly bool       $is_access_modify,
-        public readonly Table|null $parent
+        public readonly string                  $select_name,
+        public readonly string                  $query_name,
+        public readonly string                  $db_name,
+        public readonly string                  $name,
+        public readonly int|null                $type,
+        public readonly bool                    $is_required,
+        public readonly bool                    $is_access_modify,
+        public readonly Table|null|VirtualTable $parent
     ) {
         $this->placeholder = self::TypeToPlaceholder($this->type);
         $this->is_table = $this->type === FLink::TYPE;

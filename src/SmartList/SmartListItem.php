@@ -1,7 +1,7 @@
 <?php
 
 
-namespace DigitalStars\InterfaceDB\SmartList;
+namespace DigitalStars\AR\SmartList;
 
 
 interface SmartListItem {
